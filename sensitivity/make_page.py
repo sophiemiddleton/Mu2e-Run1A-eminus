@@ -119,11 +119,21 @@ def shape_limit(tag_dir):
     return None
 
 
+def relative_to_tag(path, tag_dir):
+    """<tag name>/<path inside the tag>, or just the file name for a file outside the tag."""
+    path = Path(path)
+    try:
+        return str(Path(tag_dir.name) / path.resolve().relative_to(tag_dir))
+    except ValueError:
+        return path.name
+
+
 def main():
     parser = argparse.ArgumentParser(description='Web page with the distributions and sensitivities of a tag')
     parser.add_argument('--tag', required=True, help='Tag directory (run_chain.py output)')
     parser.add_argument('--cutcount-dir', default=None, help='Default: <tag>/cutcount')
-    parser.add_argument('--out', default=str(Path(__file__).resolve().parent / 'index.html'))
+    # The page is published from the display submodule (github.com/sophiemiddleton/senisitivity_display)
+    parser.add_argument('--out', default=str(Path(__file__).resolve().parent / 'display' / 'index.html'))
     parser.add_argument('--title', default='Run-1A sensitivity')
     args = parser.parse_args()
 
@@ -159,9 +169,17 @@ def main():
         'shape': shape_limit(tag_dir),
         'sources': {'manifest': str(tag_dir / 'manifest.yaml'), 'card': str(card_path)},
     }
+    # The page is public: show inputs relative to the tag, not as paths in someone's area
+    for res in [data['sources'], data['count'] or {}, data['shape'] or {}]:
+        for key in ('manifest', 'card', 'source'):
+            if key in res:
+                res[key] = relative_to_tag(res[key], tag_dir)
     payload = json.dumps(data).replace('</', '<\\/')
     html = TEMPLATE.replace('__TITLE__', args.title).replace('__DATA__', payload)
-    Path(args.out).write_text(html)
+    out = Path(args.out)
+    if not out.parent.exists():
+        raise SystemExit(f'{out.parent} does not exist: run git submodule update --init, or pass --out')
+    out.write_text(html)
     print(f'Wrote {args.out}')
 
 

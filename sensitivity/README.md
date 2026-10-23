@@ -155,15 +155,35 @@ Other options:
 
 ## Summary web page
 
-`make_page.py` writes `index.html`, a single page with no external dependencies. It shows
-the momentum and time distributions per process, scaled to the run and with the counting
-window shaded. It also shows the expected R_μe limits from the cut and count and from the
-shape fit. Run it after `run_chain.py` and `cutcount/run_cutcount.py` on the same tag:
+`make_page.py` writes a single page with no external dependencies. It shows the momentum
+and time distributions per process, scaled to the run and with the counting window shaded.
+It also shows the expected R_μe limits from the cut and count and from the shape fit.
+
+The page lives in the `sensitivity/display` submodule
+([senisitivity_display](https://github.com/sophiemiddleton/senisitivity_display)). After
+cloning this repository, fetch the submodule once:
 
 ```bash
-python sensitivity/make_page.py --tag $PYFITTER_DIR/run1a            # writes sensitivity/index.html
+git submodule update --init sensitivity/display
+```
+
+Run `make_page.py` after `run_chain.py` and `cutcount/run_cutcount.py` on the same tag:
+
+```bash
+python sensitivity/make_page.py --tag $PYFITTER_DIR/run1a     # writes sensitivity/display/index.html
 python sensitivity/make_page.py --tag $PYFITTER_DIR/run1a --out run1a.html --cutcount-dir run1a_count/cutcount
 ```
+
+To publish a new version, commit and push the page in the submodule, then commit the
+updated submodule pointer here:
+
+```bash
+git -C sensitivity/display commit -am "Update for <tag>" && git -C sensitivity/display push
+git add sensitivity/display && git commit -m "Update sensitivity display"
+```
+
+The display repository is public. The page shows file paths relative to the tag, not
+your area, but it does show the limits and yields.
 
 ## Contact
 
