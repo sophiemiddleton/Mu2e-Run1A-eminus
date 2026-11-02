@@ -1,0 +1,27 @@
+# Large data products: store on /exp/mu2e/data or /pnfs and record the path in your README
+*.root
+*.parquet
+*.npz
+*.h5
+*.hdf5
+*.pkl
+*.art
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+*.egg-info/
+.venv/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Old pyfitter checkout made by the previous sensitivity/setup.sh (now the pyfitter submodule)
+sensitivity/pyfitter/
+
+# Local data-dispatcher state
+.data_dispatcher_worker_id

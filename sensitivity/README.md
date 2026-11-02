@@ -15,7 +15,7 @@ For full details see `documentation/RunChain.md` in pyfitter.
 From the top of this repository, in every new shell:
 
 ```bash
-source sensitivity/setup.sh
+source setup.sh
 getToken            # only needed to read files from tape or disk
 cd $PYFITTER_DIR    # for run_chain.py
 ```
@@ -24,20 +24,25 @@ cd $PYFITTER_DIR    # for run_chain.py
 
 1. Runs `mu2einit` if you haven't already.
 2. Activates `pyenv ana 2.8.0`.
-3. Clones pyfitter into `sensitivity/pyfitter` the first time. Git ignores that
-   directory.
-4. Exports `PYFITTER_DIR` and checks that every package and pyfitter file the scripts
-   need is present.
+3. Checks out the `pyfitter` submodule at the top of this repository, at the commit
+   this repository pins, and warns if the checkout has moved off that commit.
+4. Exports `PYFITTER_DIR` and `RUN1A_DIR` and checks that every package and pyfitter
+   file the scripts need is present.
 
-Mu2e/pyfitter is private, so the clone uses ssh and needs a GitHub ssh key: test it
+Mu2e/pyfitter is private, so the checkout uses ssh and needs a GitHub ssh key: test it
 with `ssh -T git@github.com`. To change the defaults, set these before sourcing:
 
 | Variable | Default | Use |
 | :--- | :--- | :--- |
-| `PYFITTER_DIR` | `sensitivity/pyfitter` | Use an existing pyfitter checkout instead of cloning |
-| `PYFITTER_REPO` | `git@github.com:Mu2e/pyfitter.git` | Clone a fork instead |
-| `PYFITTER_REF` | repository default | Branch, tag or commit to check out after cloning |
+| `PYFITTER_DIR` | `pyfitter` (the submodule) | Use another pyfitter checkout, for development. Results are then not tied to the pinned version |
 | `MU2E_ANA_VERSION` | `2.8.0` | Another `pyenv ana` version |
+
+To move to a new pyfitter version, check out the tag in the submodule and commit the change:
+
+```bash
+git -C pyfitter fetch --tags && git -C pyfitter checkout <tag>
+git add pyfitter && git commit -m "Use pyfitter <tag>"
+```
 
 ## 2. Run the chain
 
@@ -48,7 +53,7 @@ python run_chain.py --tag run1a --version run1a --group mix --loc tape --jobs 16
 | Option | Meaning |
 | :--- | :--- |
 | `--tag` | Name of the output directory |
-| `--version` | Cut set from `VERSION_CUTS` in `config.py`. Use `run1a` for the Run-1A analysis cuts |
+| `--version` | Cut set from `VERSION_CUTS` in `config.py`. Use `run1a` for the Run-1A analysis cuts, which include the TSDA veto (`no_tsda`) |
 | `--group mix` | Run all the mixed signal and background samples in `datasets.yaml` |
 | `--loc` | Where the input files are: `tape`, `disk` or `local` |
 | `--jobs` | Number of parallel workers |
@@ -120,7 +125,7 @@ By default the window is the `signal_region` of the cut set: 103.34–104.74 MeV
 640–1650 ns for `run1a`. Use `--p-window` and `--t-window` to change it.
 
 ```bash
-source sensitivity/setup.sh   # sets PYFITTER_DIR
+source setup.sh   # sets PYFITTER_DIR
 
 # Full chain: selection, count, limit
 python sensitivity/cutcount/run_cutcount.py --tag run1a_count --version run1a --group mix --loc tape --jobs 16
@@ -173,6 +178,24 @@ Run `make_page.py` after `run_chain.py` and `cutcount/run_cutcount.py` on the sa
 python sensitivity/make_page.py --tag $PYFITTER_DIR/run1a     # writes sensitivity/display/index.html
 python sensitivity/make_page.py --tag $PYFITTER_DIR/run1a --out run1a.html --cutcount-dir run1a_count/cutcount
 ```
+
+Two optional panels compare projections. Each appears only when you pass its input:
+
+| Option | Panel |
+| :--- | :--- |
+| `--runtime-summary <pyfitter>/studies/runtime/summary.csv` | Limit vs run time, from `run_studies.py --study runtime` |
+| `--beam 'LABEL=TAG' ...` | Shape-fit limit of each tag, e.g. 1.5 kW, 1BB and 2BB. A tag without a limit shows as "Not run" |
+
+```bash
+python sensitivity/make_page.py --tag $PYFITTER_DIR/run1a \
+    --runtime-summary $PYFITTER_DIR/studies/runtime/summary.csv \
+    --beam "1.5 kW=$PYFITTER_DIR/studies/beampower/1BB1500W" "1BB=$PYFITTER_DIR/run1a" "2BB=$PYFITTER_DIR/run1a_2BB"
+```
+
+Both panels are also saved as PNG and PDF next to the page (`limit_vs_runtime.{png,pdf}`,
+`limit_by_beam.{png,pdf}`) and linked from it, for talks and notes.
+
+The 1.5 kW tag comes from `python run_studies.py --study beampower --points 1BB1500W`.
 
 To publish a new version, commit and push the page in the submodule, then commit the
 updated submodule pointer here:

@@ -140,10 +140,17 @@ Every directory has a `README.md` with the same sections:
 
 ### Environment
 
+pyfitter is a git submodule of this repository, pinned to the version the Run-1A
+results use (`git submodule status pyfitter` shows it). Clone with
+`git clone --recurse-submodules`, then in every new shell:
+
 ```bash
-mu2einit
-pyenv ana
+source setup.sh
 ```
+
+This runs `mu2einit` and `pyenv ana`, checks out the pinned pyfitter if needed, and
+exports `PYFITTER_DIR` and `RUN1A_DIR`. See [`sensitivity/README.md`](sensitivity/README.md)
+for the options and for how to move to a new pyfitter tag.
 
 ---
 

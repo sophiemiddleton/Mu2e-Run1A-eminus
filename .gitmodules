@@ -1,3 +1,7 @@
 [submodule "sensitivity/display"]
 	path = sensitivity/display
 	url = git@github.com:sophiemiddleton/senisitivity_display.git
+[submodule "pyfitter"]
+	path = pyfitter
+	url = git@github.com:Mu2e/pyfitter.git
+	ignore = untracked
