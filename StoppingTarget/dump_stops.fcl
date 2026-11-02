@@ -1,0 +1,22 @@
+# Dump the stopped muons of a MuminusStopsCat file to a flat TTree, stops/stops: x, y, z, time
+# (Mu2e global coordinates, mm and ns), pdg, origin and term (creation and stopping codes).
+# Used by dump_stops_st.py:  mu2e -c dump_stops.fcl -s <stops.art> -T <out.root>
+#include "Offline/fcl/minimalMessageService.fcl"
+#include "Offline/fcl/standardServices.fcl"
+
+process_name : StopDump
+source : { module_type : RootInput }
+services : @local::Services.Core
+physics : {
+  analyzers : {
+    stops : {
+      module_type : StoppedParticlesDumper
+      dumpSimParticleLeaves : true
+      inputCollection : "TargetStopFilter"
+      writeParticleCodes : true
+    }
+  }
+  e1 : [stops]
+  end_paths : [e1]
+}
+services.TFileService.fileName : "stops.root"

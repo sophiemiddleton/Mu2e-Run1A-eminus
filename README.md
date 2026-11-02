@@ -101,6 +101,7 @@ per EventNtuple version in `VERSION_CUTS` (`config.py`, `config_1BB.py`).
 | [`PID/`](PID/) | Particle ID: electron selection, muon and pion rejection | `good_trkpid` | `PID_Efficiency` |
 | [`CRV/`](CRV/) | Cosmic ray veto: efficiency, veto window, dead time | `no_crv_veto` | `CRV_Efficiency` |
 | [`CutOptimization/`](CutOptimization/) | TODO. Contact Natalie Harrison | | |
+| [`StoppingTarget/`](StoppingTarget/) | CE and DIO after the Run-1A cuts for the MDC2025ba stopping-target geometries | all `run1a` cuts | |
 
 ### Directory READMEs
 
