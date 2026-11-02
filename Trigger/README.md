@@ -23,16 +23,16 @@ Add each study as a subdirectory with its own `README.md`. See
 ### Plots in pyfitter
 
 The trigger plots of `paper_plots.py` group `signal`. Run them as in
-[Plots from pyfitter](../README.md#plots-from-pyfitter). † marks a plot that is newer than the pinned pyfitter.
+[Plots from pyfitter](../README.md#plots-from-pyfitter).
 All of them need `--trigdiag-dir`: a tag made with `process.py --cut-profile trigdiag`, which applies
 every nominal cut except the trigger and stores each trigger decision.
 
 | Plot | What it shows |
 | :--- | :--- |
-| `trigger_eff` † | Absolute CE efficiency with each trigger path against protons per pulse, `run1a` selection (t0 > 475 ns) |
-| `trigger_eff_run1a_1D` † | As `trigger_eff`, in the 1D-fit window (t0 > 540 ns) |
-| `trigger_eff_time` † | Trigger efficiency of offline-selected CE against protons per pulse, in t0 chunks, per path. A slope that steepens at early t0 is the flash |
-| `trigger_eff_flash_scale` † | Change of the trigger efficiency with the beam flash scaled by k = 1 to 3, per path and t0 chunk |
+| `trigger_eff` | Absolute CE efficiency with each trigger path against protons per pulse, `run1a` selection (t0 > 475 ns) |
+| `trigger_eff_run1a_1D` | As `trigger_eff`, in the 1D-fit window (t0 > 540 ns) |
+| `trigger_eff_time` | Trigger efficiency of offline-selected CE against protons per pulse, in t0 chunks, per path. A slope that steepens at early t0 is the flash |
+| `trigger_eff_flash_scale` | Change of the trigger efficiency with the beam flash scaled by k = 1 to 3, per path and t0 chunk |
 
 ## Open items
 

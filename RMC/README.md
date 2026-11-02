@@ -46,13 +46,13 @@ d0 fix and TSDA veto (`<tag>/control/rmc/rmc_control.yaml`).
 
 ### Plots in pyfitter
 
-Run them as in [Plots from pyfitter](../README.md#plots-from-pyfitter). † marks a plot that is newer than the pinned pyfitter.
+Run them as in [Plots from pyfitter](../README.md#plots-from-pyfitter).
 
 | Plot | What it shows | Use in the fit |
 | :--- | :--- | :--- |
 | `rmc_shape` | RMC momentum shape used in the fits (e⁻ and e⁺), over the MC it was fitted to (needs `--shapes-dir`) | Checks the fit from `component_fits/rmc_shape.py` |
-| `rmc_int_ext` † | Internal and external RMC momentum, each with its own shape fit, over their sum | Whether one shape describes both |
-| `rmc_time` † | RMC e⁻ t0 against the 2D fit's RMC time model (the fixed CE/DIO slope) | Checks the RMC time model |
+| `rmc_int_ext` | Internal and external RMC momentum, each with its own shape fit, over their sum | Whether one shape describes both |
+| `rmc_time` | RMC e⁻ t0 against the 2D fit's RMC time model (the fixed CE/DIO slope) | Checks the RMC time model |
 
 The $e^+$ control-region plots (`eplus` group) cover RPC and RMC together:
 

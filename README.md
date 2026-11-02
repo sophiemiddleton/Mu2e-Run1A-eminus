@@ -143,8 +143,7 @@ Figures go to `<tag>/paper/<name>.{pdf,png}`. The numbers the captions quote go 
 | `--studies-dir` | `run_studies.py` output | `runtime` |
 | `--data` | Post-cut parquet of the mock data | `data_mc` |
 
-The pinned pyfitter (`git submodule status pyfitter`) has 15 of the 33 plots. The tables mark the
-others with †. Those need pyfitter `22533a2` (branch `sophie/mumep-channel`) or later until the pin moves.
+The plots in these tables are those of the pinned pyfitter (`git submodule status pyfitter`).
 
 ### Adding your analysis
 

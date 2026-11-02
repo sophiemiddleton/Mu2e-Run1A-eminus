@@ -46,13 +46,13 @@ before the d0 fix.
 
 ### Plots in pyfitter
 
-Run them as in [Plots from pyfitter](../README.md#plots-from-pyfitter). † marks a plot that is newer than the pinned pyfitter.
+Run them as in [Plots from pyfitter](../README.md#plots-from-pyfitter).
 
 | Plot | What it shows | Use in the fit |
 | :--- | :--- | :--- |
-| `rpc_int_ext` † | Internal and external RPC e⁻ momentum in the fit window, each scaled to its yield and fitted with the model's Chebyshev | Source of the RPC momentum coefficients in `model/physics_components.py` |
-| `rpc_time` † | Internal and external RPC e⁻ t0, each with an exponential fit, against the RPC time model | Source of the RPC time slope |
-| `pion_time` † | RPC e⁻ t0 with an exponential fit, against the RPC time-model rate | Checks the RPC time model |
+| `rpc_int_ext` | Internal and external RPC e⁻ momentum in the fit window, each scaled to its yield and fitted with the model's Chebyshev | Source of the RPC momentum coefficients in `model/physics_components.py` |
+| `rpc_time` | Internal and external RPC e⁻ t0, each with an exponential fit, against the RPC time model | Source of the RPC time slope |
+| `pion_time` | RPC e⁻ t0 with an exponential fit, against the RPC time-model rate | Checks the RPC time model |
 
 The $e^+$ control-region plots (`eplus` group) cover RPC and RMC together:
 
