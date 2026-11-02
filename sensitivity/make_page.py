@@ -147,6 +147,16 @@ def runtime_study(path):
             for r in rows]
 
 
+def runtime_selection(path):
+    """Tag of the selection the runtime study points reused (from the first point's manifest), or None."""
+    for point in sorted(Path(path).parent.glob('*/manifest.yaml')):
+        with open(point) as f:
+            tag = (yaml.safe_load(f) or {}).get('tag')
+        if tag:
+            return tag
+    return None
+
+
 def beam_comparison(specs, kind='toys'):
     """Shape-fit limit of each LABEL=TAG, in the order given. A tag without a limit is kept as not run."""
     out = []
@@ -183,18 +193,19 @@ def _save(plt, fig, ax, out_dir, name):
     print(f'Wrote {out_dir / name}.png and .pdf')
 
 
-def plot_runtime(points, out_dir):
+def plot_runtime(points, out_dir, selection=None):
     """Median expected limit with its 68% band against real run time, as run_studies.py draws it."""
     plt, fig, ax = _limit_axes()
     days = np.array([p['days'] for p in points])
     med, lo, hi = (np.array([p[k] for p in points]) for k in ('rmue', 'rmue_lo', 'rmue_hi'))
     ax.fill_between(days, lo, hi, color='#66cc66', alpha=0.5, lw=0, label=r'Expected $\pm 1\sigma$')
     ax.plot(days, med, 'k--', marker='o', ms=5, label='Expected median')
-    ax.plot(days, med[0] * days[0] / days, color='gray', lw=1, ls=':', label=r'$\propto 1/T$ from first point')
     ax.minorticks_on()
     ax.set_xlim(0, days[-1] * 1.04)
     ax.set_xlabel('Real run time [days]', fontsize=13)
     ax.set_title(f'{points[0]["beam_mode"]}, {points[0]["power"]:.2g} kW', loc='right', fontsize=12)
+    if selection:
+        ax.set_title(f'Selection: {selection}', loc='left', fontsize=12)
     ax.legend(frameon=False)
     _save(plt, fig, ax, out_dir, 'limit_vs_runtime')
 
@@ -280,6 +291,8 @@ def main():
                    'events': None, 'rmue_lo': None, 'rmue_hi': None, 'efficiency': None, 'background': None}
                   if args.shape_rmue is not None else shape_limit(tag_dir, args.limits)),
         'runtime': runtime_study(Path(args.runtime_summary).expanduser()) if args.runtime_summary else [],
+        'runtime_selection': runtime_selection(Path(args.runtime_summary).expanduser()) if args.runtime_summary else None,
+        'tag': tag_dir.name,
         'beams': beam_comparison(args.beam, args.limits),
         'sources': {'manifest': str(tag_dir / 'manifest.yaml'), 'card': str(card_path)},
     }
@@ -296,7 +309,7 @@ def main():
     out.write_text(html)
     print(f'Wrote {args.out}')
     if len(data['runtime']) >= 2:
-        plot_runtime(data['runtime'], out.parent)
+        plot_runtime(data['runtime'], out.parent, data['runtime_selection'])
     if any(b['limit'] for b in data['beams']):
         plot_beams(data['beams'], out.parent)
 
@@ -369,7 +382,6 @@ h2 { font-size: 16px; font-weight: 600; margin: 0 0 2px; }
 .bandkey { width: 16px; height: 10px; background: var(--band); display: inline-block; }
 .files { font-size: 13px; color: var(--text-muted); margin: 8px 0 0; }
 .files a { color: var(--s-CE); }
-.dashkey { width: 16px; border-top: 2px dotted var(--text-muted); display: inline-block; }
 .panel .note { color: var(--text-secondary); font-size: 14px; margin: 0 0 8px; }
 .chart { position: relative; }
 .chart svg { display: block; width: 100%; height: 320px; }
@@ -428,7 +440,6 @@ footer { color: var(--text-muted); font-size: 13px; margin-top: 24px; word-break
       <div class="legend">
         <span><i class="key" style="background:var(--s-CE)"></i>Expected median</span>
         <span><i class="bandkey"></i>68% band</span>
-        <span><i class="dashkey"></i>∝ 1/T from the first point</span>
       </div>
       <div class="chart" id="chart-runtime"></div>
       <p class="files">Figure: <a href="limit_vs_runtime.png">PNG</a> · <a href="limit_vs_runtime.pdf">PDF</a></p>
@@ -706,8 +717,7 @@ function drawRuntime() {
   const { svg, tip, W, H, m } = frame(host, 'Expected R_mue limit against real run time');
   const xMax = pts[pts.length - 1].days * 1.04;
   const X = v => m.l + v / xMax * (W - m.l - m.r);
-  const ref = pts.map(p => pts[0].rmue * pts[0].days / p.days);
-  const sc = logScale(Math.min(...pts.map(p => p.rmue_lo), ...ref), Math.max(...pts.map(p => p.rmue_hi)), H - m.b, m.t);
+  const sc = logScale(Math.min(...pts.map(p => p.rmue_lo)), Math.max(...pts.map(p => p.rmue_hi)), H - m.b, m.t);
   yAxis(svg, sc, m, W);
   el('line', { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, stroke: 'var(--axis)', 'stroke-width': 1 }, svg);
   for (const t of linearTicks(0, xMax, W < 500 ? 4 : 8)) {
@@ -719,8 +729,6 @@ function drawRuntime() {
   const band = pts.map(p => `${X(p.days)} ${sc.Y(p.rmue_hi)}`).join('L') + 'L' +
     pts.slice().reverse().map(p => `${X(p.days)} ${sc.Y(p.rmue_lo)}`).join('L');
   el('path', { d: `M${band}Z`, fill: 'var(--band)' }, svg);
-  el('path', { d: 'M' + pts.map((p, i) => `${X(p.days)} ${sc.Y(ref[i])}`).join('L'), fill: 'none',
-    stroke: 'var(--text-muted)', 'stroke-width': 1.5, 'stroke-dasharray': '2 4', 'stroke-linecap': 'round' }, svg);
   el('path', { d: 'M' + pts.map(p => `${X(p.days)} ${sc.Y(p.rmue)}`).join('L'), fill: 'none',
     stroke: 'var(--s-CE)', 'stroke-width': 2, 'stroke-linejoin': 'round' }, svg);
   const dots = pts.map(p => el('circle', { cx: X(p.days), cy: sc.Y(p.rmue), r: 4, fill: 'var(--s-CE)',
@@ -792,7 +800,10 @@ if (hasRuntime) {
   const p0 = DATA.runtime[0];
   document.getElementById('runtime-note').textContent =
     `Expected 90% CL upper limit from the shape fit, ${p0.beam_mode} at ${+p0.power.toFixed(2)} kW. ` +
-    'Only the normalization changes between points: the selection is the same.';
+    'Only the normalization changes between points: the selection is the same.' +
+    (DATA.runtime_selection && DATA.runtime_selection !== DATA.tag
+      ? ` The points reuse the ${DATA.runtime_selection} selection, not the ${DATA.tag} selection of the limits above.`
+      : '');
 }
 
 function render() {
