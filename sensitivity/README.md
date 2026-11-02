@@ -214,6 +214,16 @@ git add sensitivity/display && git commit -m "Update sensitivity display"
 The display repository is public. The page shows file paths relative to the tag, not
 your area, but it does show the limits and yields.
 
+## Plots in pyfitter
+
+Two `paper_plots.py` plots belong with the sensitivity. Run them as in
+[Plots from pyfitter](../README.md#plots-from-pyfitter). † marks a plot that is newer than the pinned pyfitter.
+
+| Plot | What it shows | Inputs |
+| :--- | :--- | :--- |
+| `data_mc` | e⁻ momentum and t0 after the cuts: scaled MC stacked, with mock data (MDS3e) as points | `--data`, the mock-data post-cut parquet. `validate_MDS.py` runs this plot |
+| `runtime` † | Expected R_μe limit with 1σ and 2σ bands against real run time | `--studies-dir`, from `run_studies.py --study runtime` |
+
 ## Contact
 
 Sophie Middleton (sophie@fnal.gov)

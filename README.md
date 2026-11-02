@@ -87,6 +87,7 @@ top-level directory. Studies go in subdirectories underneath it.
 | [`DIO/`](DIO/) | Decay-in-orbit background: endpoint spectrum, shape model, yield | `component_fits/dio.py` | `DIO_mix` (`DIOtail95Mix1BB`) |
 | [`RPC/`](RPC/) | Radiative pion capture, internal and external conversion, $e^+$ control region | `component_fits/rpc.py` | `RPCExt_mix`, `RPCInt_mix` |
 | [`RMC/`](RMC/) | Radiative muon capture, internal and external conversion, late-time $e^+$ control region | `component_fits/rmc.py` | `RMCExt_mix`, `RMCInt_mix` |
+| [`Cosmics/`](Cosmics/) | Cosmic-ray electrons that get past the veto: momentum and time shape, yield, OffSpill control region | `component_fits/cosmics.py` | `Cosmic_mix`, `OffSpill` |
 
 ### Detector and selection
 
@@ -100,6 +101,7 @@ per EventNtuple version in `VERSION_CUTS` (`config.py`, `config_1BB.py`).
 | [`trkqual/`](trkqual/) | Track quality classifier threshold and efficiency | `good_trkqual` | covered by `Track_Efficiency` for now |
 | [`PID/`](PID/) | Particle ID: electron selection, muon and pion rejection | `good_trkpid` | `PID_Efficiency` |
 | [`CRV/`](CRV/) | Cosmic ray veto: efficiency, veto window, dead time | `no_crv_veto` | `CRV_Efficiency` |
+| [`Trigger/`](Trigger/) | Online track trigger (CPR or APR): efficiency against pileup and beam flash | `or_trigger` | none yet |
 | [`CutOptimization/`](CutOptimization/) | TODO. Contact Natalie Harrison | | |
 | [`StoppingTarget/`](StoppingTarget/) | CE and DIO after the Run-1A cuts for the MDC2025ba stopping-target geometries | all `run1a` cuts | |
 
@@ -117,6 +119,32 @@ Every directory has a `README.md` with the same sections:
   contact. Add a row when you add a study.
 - **Open items.** Work that still needs an owner. Check this list before you
   start a new study.
+
+### Plots from pyfitter
+
+pyfitter's `paper_plots.py` makes the paper figures from a `run_chain.py` tag. The code stays in
+pyfitter, because the fit model is built from some of these fits. Each directory's README lists the
+plots for its area under **Studies**. Make them from the pyfitter checkout:
+
+```bash
+cd $PYFITTER_DIR
+python paper_plots.py --list                                  # every plot and its group
+python paper_plots.py --tag au_run1a_check --only cosmic      # a group, or plot names
+```
+
+Figures go to `<tag>/paper/<name>.{pdf,png}`. The numbers the captions quote go to
+`<tag>/paper/paper_summary.yaml`. Some plots need inputs besides the tag:
+
+| Option | Input | Plots |
+| :--- | :--- | :--- |
+| `--flat-dir` | Flat e⁻/e⁺ samples from `charge_asymmetry.py` | `efficiency`, `signal_response`, `charge_ratio`, `charge_cuts` |
+| `--shapes-dir` | RMC shape fits from `component_fits/rmc_shape.py` | `rmc_shape`, `rmc_int_ext`, `rmc_time` |
+| `--trigdiag-dir` | A tag made with `process.py --cut-profile trigdiag` | `trigger_*` |
+| `--studies-dir` | `run_studies.py` output | `runtime` |
+| `--data` | Post-cut parquet of the mock data | `data_mc` |
+
+The pinned pyfitter (`git submodule status pyfitter`) has 15 of the 33 plots. The tables mark the
+others with †. Those need pyfitter `22533a2` (branch `sophie/mumep-channel`) or later until the pin moves.
 
 ### Adding your analysis
 
