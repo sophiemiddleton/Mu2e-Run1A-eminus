@@ -9,6 +9,8 @@ Inputs (all from the tag made by run_chain.py and cutcount/run_cutcount.py):
 Optional:
     --runtime-summary  studies/runtime/summary.csv of pyfitter's run_studies.py: limit vs run time
     --beam LABEL=TAG   shape-fit limit of other tags (e.g. 1.5 kW, 1BB, 2BB) for the beam-mode comparison
+    --limits KIND      toys (default): median and 68% band of the toys; asimov: the Asimov median and band
+    --shape-rmue X     shape-fit limit to show when the tag has no limits/ output (median only, no band)
 
 Each track is weighted to the run exactly as in the counting (run_cutcount.py):
     MC:     expected * acceptance / N_generated_in_sample
@@ -94,35 +96,43 @@ def histograms(manifest, p_window, t_window, mom_edges, time_edges):
     return {p: out[p] for p in PROCESS_ORDER if p in out} | {p: v for p, v in out.items() if p not in PROCESS_ORDER}
 
 
-def count_limit(cutcount_dir):
+def count_limit(cutcount_dir, kind='toys'):
     path = cutcount_dir / 'count_limits_asymptotic.yaml'
     if not path.exists():
         return None
     with open(path) as f:
         res = yaml.safe_load(f)
-    asimov = res['asimov']
-    return {
-        'method': 'Asymptotic CLs (Asimov), one bin',
-        'events': asimov['band_+0']['events'], 'rmue': asimov['band_+0']['rmue'],
-        'rmue_lo': asimov['band_-1']['rmue'], 'rmue_hi': asimov['band_+1']['rmue'],
-        'efficiency': res['signal_efficiency'], 'background': res['background_yield'],
-        'source': str(path),
-    }
+    out = {'efficiency': res['signal_efficiency'], 'background': res['background_yield'], 'source': str(path)}
+    toys = res.get('toys')
+    if kind == 'toys' and toys:
+        per_event = toys['median_rmue'] / toys['median_events']
+        out.update(method=f'CLs, median of {toys["n"]} toys, one bin', events=toys['median_events'],
+                   rmue=toys['median_rmue'], rmue_lo=toys['low_events'] * per_event,
+                   rmue_hi=toys['high_events'] * per_event)
+    else:
+        asimov = res['asimov']
+        out.update(method='Asymptotic CLs (Asimov), one bin', events=asimov['band_+0']['events'],
+                   rmue=asimov['band_+0']['rmue'], rmue_lo=asimov['band_-1']['rmue'],
+                   rmue_hi=asimov['band_+1']['rmue'])
+    return out
 
 
-def shape_limit(tag_dir):
+def shape_limit(tag_dir, kind='toys'):
     for dim in ('2d', '1d'):
         path = tag_dir / 'limits' / f'card_{dim}_cls_limits.npz'
         if path.exists():
             d = np.load(path)
-            events, rmue = d['asimov_events'], d['asimov_rmue']
-            return {
-                'method': f'Asymptotic CLs (Asimov), {dim.upper()} shape fit',
-                'events': float(events[2]), 'rmue': float(rmue[2]),
-                'rmue_lo': float(rmue[1]), 'rmue_hi': float(rmue[3]),
-                'efficiency': float(d['signal_efficiency']), 'background': None,
-                'source': str(path),
-            }
+            out = {'efficiency': float(d['signal_efficiency']), 'background': None, 'source': str(path)}
+            if kind == 'toys' and 'rmue_median' in d.files:
+                out.update(method=f'CLs, median of {len(d["rmue_limits"])} toys, {dim.upper()} shape fit',
+                           events=float(d['median']), rmue=float(d['rmue_median']),
+                           rmue_lo=float(d['rmue_low']), rmue_hi=float(d['rmue_high']))
+            else:
+                events, rmue = d['asimov_events'], d['asimov_rmue']
+                out.update(method=f'Asymptotic CLs (Asimov), {dim.upper()} shape fit',
+                           events=float(events[2]), rmue=float(rmue[2]),
+                           rmue_lo=float(rmue[1]), rmue_hi=float(rmue[3]))
+            return out
     return None
 
 
@@ -137,7 +147,7 @@ def runtime_study(path):
             for r in rows]
 
 
-def beam_comparison(specs):
+def beam_comparison(specs, kind='toys'):
     """Shape-fit limit of each LABEL=TAG, in the order given. A tag without a limit is kept as not run."""
     out = []
     for spec in specs:
@@ -145,7 +155,7 @@ def beam_comparison(specs):
         if not sep:
             raise SystemExit(f'--beam expects LABEL=TAG, got {spec!r}')
         tag_dir = Path(tag).expanduser().resolve()
-        res = shape_limit(tag_dir)
+        res = shape_limit(tag_dir, kind)
         if res:
             res['source'] = relative_to_tag(res['source'], tag_dir)
         else:
@@ -229,6 +239,10 @@ def main():
     parser.add_argument('--title', default='Run-1A sensitivity')
     parser.add_argument('--runtime-summary', default=None,
                         help='studies/runtime/summary.csv from run_studies.py, for the limit vs run time plot')
+    parser.add_argument('--limits', choices=('toys', 'asimov'), default='toys',
+                        help='Expected limit to show: median of the toys (default) or the Asimov median')
+    parser.add_argument('--shape-rmue', type=float, default=None,
+                        help='Show this shape-fit limit instead of reading <tag>/limits (median only)')
     parser.add_argument('--beam', nargs='+', default=[], metavar='LABEL=TAG',
                         help='Tags to compare by beam mode, e.g. "1.5 kW=studies/beampower/1BB1500W" "2BB=run1a_2BB"')
     args = parser.parse_args()
@@ -261,10 +275,12 @@ def main():
         'range': {'mom': mom_range, 'time': time_range},
         'edges': {'mom': [float(v) for v in mom_edges], 'time': [float(v) for v in time_edges]},
         'processes': histograms(manifest, p_window, t_window, mom_edges, time_edges),
-        'count': count_limit(cutcount_dir),
-        'shape': shape_limit(tag_dir),
+        'count': count_limit(cutcount_dir, args.limits),
+        'shape': ({'method': 'Shape fit, median expected limit (given with --shape-rmue)', 'rmue': args.shape_rmue,
+                   'events': None, 'rmue_lo': None, 'rmue_hi': None, 'efficiency': None, 'background': None}
+                  if args.shape_rmue is not None else shape_limit(tag_dir, args.limits)),
         'runtime': runtime_study(Path(args.runtime_summary).expanduser()) if args.runtime_summary else [],
-        'beams': beam_comparison(args.beam),
+        'beams': beam_comparison(args.beam, args.limits),
         'sources': {'manifest': str(tag_dir / 'manifest.yaml'), 'card': str(card_path)},
     }
     # The page is public: show inputs relative to the tag, not as paths in someone's area
@@ -482,8 +498,8 @@ function tile(name, res) {
   }
   div.innerHTML = `<div class="label">${name}: expected R<sub>μe</sub> limit</div>
     <div class="value">${sci(res.rmue)}</div>
-    <div class="detail">${res.events.toFixed(2)} signal events · 68% band ${sci(res.rmue_lo)} to ${sci(res.rmue_hi)}</div>
-    <div class="detail">CE efficiency ${(100 * res.efficiency).toFixed(1)}%${res.background != null ? ` · background ${res.background.toFixed(2)} events in the window` : ''}</div>
+    ${res.events != null ? `<div class="detail">${res.events.toFixed(2)} signal events · 68% band ${sci(res.rmue_lo)} to ${sci(res.rmue_hi)}</div>` : ''}
+    ${res.efficiency != null ? `<div class="detail">CE efficiency ${(100 * res.efficiency).toFixed(1)}%${res.background != null ? ` · background ${res.background.toFixed(2)} events in the window` : ''}</div>` : ''}
     <div class="method">${res.method}</div>`;
   return div;
 }
@@ -518,7 +534,7 @@ document.getElementById('footer').innerHTML =
   `Generated ${DATA.generated} by make_page.py. Selection range ${r.mom[0]}–${r.mom[1]} MeV/c, ${r.time[0]}–${r.time[1]} ns.<br>` +
   `Manifest: ${DATA.sources.manifest}<br>Counting card: ${DATA.sources.card}` +
   (DATA.count ? `<br>Cut-and-count limit: ${DATA.count.source}` : '') +
-  (DATA.shape ? `<br>Shape-fit limit: ${DATA.shape.source}` : '') +
+  (DATA.shape ? `<br>Shape-fit limit: ${DATA.shape.source || 'given with --shape-rmue'}` : '') +
   (DATA.runtime.length ? '<br>Limit vs run time: studies/runtime/summary.csv from run_studies.py' : '') +
   DATA.beams.filter(b => b.limit).map(b => `<br>${b.label} limit: ${b.limit.source}`).join('');
 

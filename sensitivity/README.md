@@ -186,6 +186,12 @@ Two optional panels compare projections. Each appears only when you pass its inp
 | `--runtime-summary <pyfitter>/studies/runtime/summary.csv` | Limit vs run time, from `run_studies.py --study runtime` |
 | `--beam 'LABEL=TAG' ...` | Shape-fit limit of each tag, e.g. 1.5 kW, 1BB and 2BB. A tag without a limit shows as "Not run" |
 
+Both limit tiles show the median expected limit of the toys and its 68% band. Pass `--limits asimov`
+for the Asimov median instead.
+
+`--shape-rmue 1.09e-14` shows that shape-fit limit in place of `<tag>/limits`, for a tag whose
+shape fit was run elsewhere. The tile then shows only the median, with no band.
+
 ```bash
 python sensitivity/make_page.py --tag $PYFITTER_DIR/run1a \
     --runtime-summary $PYFITTER_DIR/studies/runtime/summary.csv \
