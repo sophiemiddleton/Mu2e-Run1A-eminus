@@ -6,16 +6,23 @@ Inputs (all from the tag made by run_chain.py and cutcount/run_cutcount.py):
     <tag>/cutcount/count_card.yaml          counting window
     <tag>/cutcount/count_limits_asymptotic.yaml   cut-and-count limit
     <tag>/limits/card_{2d,1d}_cls_limits.npz      shape-fit limit
+Optional:
+    --runtime-summary  studies/runtime/summary.csv of pyfitter's run_studies.py: limit vs run time
+    --beam LABEL=TAG   shape-fit limit of other tags (e.g. 1.5 kW, 1BB, 2BB) for the beam-mode comparison
 
 Each track is weighted to the run exactly as in the counting (run_cutcount.py):
     MC:     expected * acceptance / N_generated_in_sample
     Cosmic: acceptance (on-spill time / cosmic sample livetime)
 
 The page has no external dependencies, so it opens from disk or any web server.
+The two projection plots are also saved next to it as PNG and PDF, for talks and notes:
+    limit_vs_runtime.{png,pdf}   limit_by_beam.{png,pdf}
 
 Usage:
     python make_page.py --tag ~/pyfitter/run1a
     python make_page.py --tag ~/pyfitter/run1a --out run1a.html --cutcount-dir run1a_count/cutcount
+    python make_page.py --tag ~/pyfitter/run1a --runtime-summary ~/pyfitter/studies/runtime/summary.csv \
+        --beam '1.5 kW=~/pyfitter/studies/beampower/1BB1500W' '1BB=~/pyfitter/run1a' '2BB=~/pyfitter/run1a_2BB'
 """
 
 import argparse
@@ -119,6 +126,91 @@ def shape_limit(tag_dir):
     return None
 
 
+def runtime_study(path):
+    """Points of the run_studies.py runtime study that have a limit, in run-time order."""
+    with open(path, newline='') as f:
+        rows = [r for r in csv.DictReader(f) if r.get('status') == 'ok' and r.get('rmue_median')]
+    rows.sort(key=lambda r: float(r['realtime_days']))
+    return [{'point': r['point'], 'days': float(r['realtime_days']), 'beam_mode': r['beam_mode'],
+             'power': float(r['beam_power_kW']), 'pot': float(r['pot']),
+             'rmue': float(r['rmue_median']), 'rmue_lo': float(r['rmue_low']), 'rmue_hi': float(r['rmue_high'])}
+            for r in rows]
+
+
+def beam_comparison(specs):
+    """Shape-fit limit of each LABEL=TAG, in the order given. A tag without a limit is kept as not run."""
+    out = []
+    for spec in specs:
+        label, sep, tag = spec.partition('=')
+        if not sep:
+            raise SystemExit(f'--beam expects LABEL=TAG, got {spec!r}')
+        tag_dir = Path(tag).expanduser().resolve()
+        res = shape_limit(tag_dir)
+        if res:
+            res['source'] = relative_to_tag(res['source'], tag_dir)
+        else:
+            print(f'No limit in {tag_dir}/limits: {label} shown as not run')
+        out.append({'label': label.strip(), 'limit': res})
+    return out
+
+
+def _limit_axes():
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=(6.4, 4.8))
+    ax.set_yscale('log')
+    ax.set_ylabel(r'90% CL upper limit on $R_{\mu e}$', fontsize=13)
+    return plt, fig, ax
+
+
+def _save(plt, fig, ax, out_dir, name):
+    ax.tick_params(direction='in', which='both', top=True, right=True, labelsize=12)
+    fig.tight_layout()
+    for ext in ('png', 'pdf'):
+        fig.savefig(out_dir / f'{name}.{ext}', dpi=200, bbox_inches='tight')
+    plt.close(fig)
+    print(f'Wrote {out_dir / name}.png and .pdf')
+
+
+def plot_runtime(points, out_dir):
+    """Median expected limit with its 68% band against real run time, as run_studies.py draws it."""
+    plt, fig, ax = _limit_axes()
+    days = np.array([p['days'] for p in points])
+    med, lo, hi = (np.array([p[k] for p in points]) for k in ('rmue', 'rmue_lo', 'rmue_hi'))
+    ax.fill_between(days, lo, hi, color='#66cc66', alpha=0.5, lw=0, label=r'Expected $\pm 1\sigma$')
+    ax.plot(days, med, 'k--', marker='o', ms=5, label='Expected median')
+    ax.plot(days, med[0] * days[0] / days, color='gray', lw=1, ls=':', label=r'$\propto 1/T$ from first point')
+    ax.minorticks_on()
+    ax.set_xlim(0, days[-1] * 1.04)
+    ax.set_xlabel('Real run time [days]', fontsize=13)
+    ax.set_title(f'{points[0]["beam_mode"]}, {points[0]["power"]:.2g} kW', loc='right', fontsize=12)
+    ax.legend(frameon=False)
+    _save(plt, fig, ax, out_dir, 'limit_vs_runtime')
+
+
+def plot_beams(beams, out_dir):
+    """Median expected limit and 68% band of each beam mode that has a limit."""
+    beams = [b for b in beams if b['limit']]
+    plt, fig, ax = _limit_axes()
+    x = np.arange(len(beams))
+    med = np.array([b['limit']['rmue'] for b in beams])
+    lo = np.array([b['limit']['rmue_lo'] for b in beams])
+    hi = np.array([b['limit']['rmue_hi'] for b in beams])
+    ax.errorbar(x, med, yerr=[med - lo, hi - med], fmt='o', color='k', ms=7, capsize=6, lw=1.5,
+                label=r'Expected median, $\pm 1\sigma$')
+    for xi, m in zip(x, med):
+        e = int(np.floor(np.log10(m)))
+        ax.annotate(rf'${m / 10 ** e:.1f}\times10^{{{e}}}$', (xi, m), xytext=(10, 0),
+                    textcoords='offset points', va='center', fontsize=11)
+    ax.set_xticks(x, [b['label'] for b in beams], fontsize=12)
+    ax.set_xlim(-0.5, len(beams) - 0.2)  # room for the last value label
+    ax.set_xlabel('Beam mode', fontsize=13)
+    ax.legend(frameon=False)
+    ax.tick_params(axis='x', which='minor', bottom=False, top=False)  # categories: no minor ticks
+    _save(plt, fig, ax, out_dir, 'limit_by_beam')
+
+
 def relative_to_tag(path, tag_dir):
     """<tag name>/<path inside the tag>, or just the file name for a file outside the tag."""
     path = Path(path)
@@ -135,13 +227,17 @@ def main():
     # The page is published from the display submodule (github.com/sophiemiddleton/senisitivity_display)
     parser.add_argument('--out', default=str(Path(__file__).resolve().parent / 'display' / 'index.html'))
     parser.add_argument('--title', default='Run-1A sensitivity')
+    parser.add_argument('--runtime-summary', default=None,
+                        help='studies/runtime/summary.csv from run_studies.py, for the limit vs run time plot')
+    parser.add_argument('--beam', nargs='+', default=[], metavar='LABEL=TAG',
+                        help='Tags to compare by beam mode, e.g. "1.5 kW=studies/beampower/1BB1500W" "2BB=run1a_2BB"')
     args = parser.parse_args()
 
     tag_dir = Path(args.tag).expanduser().resolve()
     cutcount_dir = Path(args.cutcount_dir).expanduser().resolve() if args.cutcount_dir else tag_dir / 'cutcount'
     if not (tag_dir / 'manifest.yaml').exists():
         raise SystemExit(f'No manifest.yaml in {tag_dir}: run the selection for this tag first '
-                         '(is PYFITTER_DIR set? source sensitivity/setup.sh)')
+                         '(is PYFITTER_DIR set? source setup.sh)')
     with open(tag_dir / 'manifest.yaml') as f:
         manifest = yaml.safe_load(f)
     card_path = cutcount_dir / 'count_card.yaml'
@@ -167,6 +263,8 @@ def main():
         'processes': histograms(manifest, p_window, t_window, mom_edges, time_edges),
         'count': count_limit(cutcount_dir),
         'shape': shape_limit(tag_dir),
+        'runtime': runtime_study(Path(args.runtime_summary).expanduser()) if args.runtime_summary else [],
+        'beams': beam_comparison(args.beam),
         'sources': {'manifest': str(tag_dir / 'manifest.yaml'), 'card': str(card_path)},
     }
     # The page is public: show inputs relative to the tag, not as paths in someone's area
@@ -181,6 +279,10 @@ def main():
         raise SystemExit(f'{out.parent} does not exist: run git submodule update --init, or pass --out')
     out.write_text(html)
     print(f'Wrote {args.out}')
+    if len(data['runtime']) >= 2:
+        plot_runtime(data['runtime'], out.parent)
+    if any(b['limit'] for b in data['beams']):
+        plot_beams(data['beams'], out.parent)
 
 
 TEMPLATE = r"""<!doctype html>
@@ -202,6 +304,7 @@ TEMPLATE = r"""<!doctype html>
   --border: rgba(11,11,11,0.10);
   --window: rgba(11,11,11,0.05);
   --s-CE: #2a78d6; --s-DIO: #eb6834; --s-Cosmic: #1baf7a; --s-RPC: #eda100; --s-RMC: #e87ba4;
+  --band: rgba(42,120,214,0.18);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -210,6 +313,7 @@ TEMPLATE = r"""<!doctype html>
     --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #898781;
     --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --window: rgba(255,255,255,0.06);
     --s-CE: #3987e5; --s-DIO: #d95926; --s-Cosmic: #199e70; --s-RPC: #c98500; --s-RMC: #d55181;
+    --band: rgba(57,135,229,0.24);
   }
 }
 :root[data-theme="dark"] {
@@ -218,6 +322,7 @@ TEMPLATE = r"""<!doctype html>
   --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #898781;
   --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --window: rgba(255,255,255,0.06);
   --s-CE: #3987e5; --s-DIO: #d95926; --s-Cosmic: #199e70; --s-RPC: #c98500; --s-RMC: #d55181;
+  --band: rgba(57,135,229,0.24);
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--page); color: var(--text-primary);
@@ -243,6 +348,12 @@ h2 { font-size: 16px; font-weight: 600; margin: 0 0 2px; }
 .key { width: 16px; height: 2px; border-radius: 1px; display: inline-block; }
 .windowkey { width: 14px; height: 12px; background: var(--window); border: 1px solid var(--axis); display: inline-block; }
 .charts { display: grid; gap: 16px; margin-bottom: 24px; }
+.projections { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.projections .legend { margin-bottom: 8px; }
+.bandkey { width: 16px; height: 10px; background: var(--band); display: inline-block; }
+.files { font-size: 13px; color: var(--text-muted); margin: 8px 0 0; }
+.files a { color: var(--s-CE); }
+.dashkey { width: 16px; border-top: 2px dotted var(--text-muted); display: inline-block; }
 .panel .note { color: var(--text-secondary); font-size: 14px; margin: 0 0 8px; }
 .chart { position: relative; }
 .chart svg { display: block; width: 100%; height: 320px; }
@@ -291,6 +402,26 @@ footer { color: var(--text-muted); font-size: 13px; margin-top: 24px; word-break
       <h2>Reconstructed time</h2>
       <p class="note" id="time-note"></p>
       <div class="chart" id="chart-time"></div>
+    </section>
+  </div>
+
+  <div class="projections" id="projections" hidden>
+    <section class="panel" id="panel-runtime" hidden>
+      <h2>Limit vs run time</h2>
+      <p class="note" id="runtime-note"></p>
+      <div class="legend">
+        <span><i class="key" style="background:var(--s-CE)"></i>Expected median</span>
+        <span><i class="bandkey"></i>68% band</span>
+        <span><i class="dashkey"></i>∝ 1/T from the first point</span>
+      </div>
+      <div class="chart" id="chart-runtime"></div>
+      <p class="files">Figure: <a href="limit_vs_runtime.png">PNG</a> · <a href="limit_vs_runtime.pdf">PDF</a></p>
+    </section>
+    <section class="panel" id="panel-beams" hidden>
+      <h2>Limit by beam mode</h2>
+      <p class="note">Expected 90% CL upper limit from the shape fit of each tag. Bars: 68% band.</p>
+      <div class="chart" id="chart-beams"></div>
+      <p class="files">Figure: <a href="limit_by_beam.png">PNG</a> · <a href="limit_by_beam.pdf">PDF</a></p>
     </section>
   </div>
 
@@ -387,7 +518,9 @@ document.getElementById('footer').innerHTML =
   `Generated ${DATA.generated} by make_page.py. Selection range ${r.mom[0]}–${r.mom[1]} MeV/c, ${r.time[0]}–${r.time[1]} ns.<br>` +
   `Manifest: ${DATA.sources.manifest}<br>Counting card: ${DATA.sources.card}` +
   (DATA.count ? `<br>Cut-and-count limit: ${DATA.count.source}` : '') +
-  (DATA.shape ? `<br>Shape-fit limit: ${DATA.shape.source}` : '');
+  (DATA.shape ? `<br>Shape-fit limit: ${DATA.shape.source}` : '') +
+  (DATA.runtime.length ? '<br>Limit vs run time: studies/runtime/summary.csv from run_studies.py' : '') +
+  DATA.beams.filter(b => b.limit).map(b => `<br>${b.label} limit: ${b.limit.source}`).join('');
 
 // ---------- charts ----------
 function niceStep(range, target) {
@@ -505,7 +638,152 @@ function notes() {
     ? `Tracks with ${w.mom[0]} < p < ${w.mom[1]} MeV/c. Shaded: time window.`
     : 'All tracks passing the selection. Shaded: time window.';
 }
-function render() { notes(); draw('mom'); draw('time'); }
+// ---------- projections: limit vs run time and by beam mode ----------
+function logScale(lo, hi, y0, y1) {
+  const dLo = Math.floor(Math.log10(lo)), dHi = Math.ceil(Math.log10(hi));
+  const Y = v => y0 - (Math.log10(v) - dLo) / (dHi - dLo) * (y0 - y1);
+  // decades, plus 2 and 5 when the axis spans few decades
+  const ticks = [];
+  for (let d = dLo; d <= dHi; d++)
+    for (const f of dHi - dLo <= 2 ? [1, 2, 5] : [1]) if (f * 10 ** d <= 10 ** dHi) ticks.push({ v: f * 10 ** d, f, d });
+  return { Y, ticks };
+}
+function tickLabel(t) {
+  const p = decade(10 ** t.d);
+  return t.f === 1 ? p : `${t.f}×${p}`;
+}
+function frame(host, label, H = 300) {
+  host.innerHTML = '';
+  const W = Math.max(host.clientWidth, 280);
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': label }, host);
+  svg.style.height = `${H}px`;
+  const tip = document.createElement('div');
+  tip.className = 'tooltip';
+  host.appendChild(tip);
+  return { svg, tip, W, H, m: { l: 88, r: 16, t: 12, b: 44 } };
+}
+function yAxis(svg, sc, m, W) {
+  for (const t of sc.ticks) {
+    const y = sc.Y(t.v);
+    el('line', { x1: m.l, x2: W - m.r, y1: y, y2: y, stroke: 'var(--grid)', 'stroke-width': 1 }, svg);
+    const lab = el('text', { x: m.l - 8, y: y + 4, 'text-anchor': 'end', fill: 'var(--text-muted)', 'font-size': 12 }, svg);
+    lab.textContent = tickLabel(t);
+  }
+}
+function axisTitles(svg, W, H, m, xText) {
+  const xl = el('text', { x: (m.l + W - m.r) / 2, y: H - 6, 'text-anchor': 'middle', fill: 'var(--text-secondary)', 'font-size': 13 }, svg);
+  xl.textContent = xText;
+  const yl = el('text', { transform: `translate(14 ${(m.t + H - m.b) / 2}) rotate(-90)`, 'text-anchor': 'middle',
+    fill: 'var(--text-secondary)', 'font-size': 13 }, svg);
+  yl.innerHTML = '90% CL limit on R<tspan font-size="10" dy="3">μe</tspan>';
+}
+function placeTip(tip, host, px, py) {
+  tip.style.display = 'block';
+  const left = px + 16;
+  tip.style.left = `${left + tip.offsetWidth > host.clientWidth ? px - tip.offsetWidth - 16 : left}px`;
+  tip.style.top = `${Math.max(0, py - tip.offsetHeight / 2)}px`;
+}
+
+function drawRuntime() {
+  const pts = DATA.runtime;
+  const host = document.getElementById('chart-runtime');
+  const { svg, tip, W, H, m } = frame(host, 'Expected R_mue limit against real run time');
+  const xMax = pts[pts.length - 1].days * 1.04;
+  const X = v => m.l + v / xMax * (W - m.l - m.r);
+  const ref = pts.map(p => pts[0].rmue * pts[0].days / p.days);
+  const sc = logScale(Math.min(...pts.map(p => p.rmue_lo), ...ref), Math.max(...pts.map(p => p.rmue_hi)), H - m.b, m.t);
+  yAxis(svg, sc, m, W);
+  el('line', { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, stroke: 'var(--axis)', 'stroke-width': 1 }, svg);
+  for (const t of linearTicks(0, xMax, W < 500 ? 4 : 8)) {
+    const lab = el('text', { x: X(t), y: H - m.b + 18, 'text-anchor': 'middle', fill: 'var(--text-muted)', 'font-size': 12 }, svg);
+    lab.textContent = t;
+  }
+  axisTitles(svg, W, H, m, 'Real run time [days]');
+
+  const band = pts.map(p => `${X(p.days)} ${sc.Y(p.rmue_hi)}`).join('L') + 'L' +
+    pts.slice().reverse().map(p => `${X(p.days)} ${sc.Y(p.rmue_lo)}`).join('L');
+  el('path', { d: `M${band}Z`, fill: 'var(--band)' }, svg);
+  el('path', { d: 'M' + pts.map((p, i) => `${X(p.days)} ${sc.Y(ref[i])}`).join('L'), fill: 'none',
+    stroke: 'var(--text-muted)', 'stroke-width': 1.5, 'stroke-dasharray': '2 4', 'stroke-linecap': 'round' }, svg);
+  el('path', { d: 'M' + pts.map(p => `${X(p.days)} ${sc.Y(p.rmue)}`).join('L'), fill: 'none',
+    stroke: 'var(--s-CE)', 'stroke-width': 2, 'stroke-linejoin': 'round' }, svg);
+  const dots = pts.map(p => el('circle', { cx: X(p.days), cy: sc.Y(p.rmue), r: 4, fill: 'var(--s-CE)',
+    stroke: 'var(--surface-1)', 'stroke-width': 2 }, svg));
+
+  const hit = el('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: 'transparent' }, svg);
+  hit.addEventListener('pointermove', evt => {
+    const box = svg.getBoundingClientRect();
+    const px = (evt.clientX - box.left) * W / box.width;
+    let i = 0;
+    pts.forEach((p, j) => { if (Math.abs(X(p.days) - px) < Math.abs(X(pts[i].days) - px)) i = j; });
+    dots.forEach((d, j) => d.setAttribute('r', j === i ? 6 : 4));
+    const p = pts[i];
+    tip.innerHTML = `<div class="head">${+p.days.toFixed(1)} days (${(p.days / (365 / 12)).toFixed(1)} months)</div>
+      <div class="row"><span>Median</span><span>${sci(p.rmue)}</span></div>
+      <div class="row"><span>68% band</span><span>${sci(p.rmue_lo, 1)} – ${sci(p.rmue_hi, 1)}</span></div>
+      <div class="row"><span>POT</span><span>${sci(p.pot)}</span></div>`;
+    placeTip(tip, host, X(p.days) * box.width / W, sc.Y(p.rmue) * box.height / H);
+  });
+  hit.addEventListener('pointerleave', () => { tip.style.display = 'none'; dots.forEach(d => d.setAttribute('r', 4)); });
+}
+
+function drawBeams() {
+  const beams = DATA.beams;
+  const host = document.getElementById('chart-beams');
+  const { svg, tip, W, H, m } = frame(host, 'Expected R_mue limit by beam mode');
+  const done = beams.filter(b => b.limit).map(b => b.limit);
+  const sc = logScale(Math.min(...done.map(r => r.rmue_lo)), Math.max(...done.map(r => r.rmue_hi)), H - m.b, m.t);
+  yAxis(svg, sc, m, W);
+  el('line', { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, stroke: 'var(--axis)', 'stroke-width': 1 }, svg);
+  axisTitles(svg, W, H, m, 'Beam mode');
+  const step = (W - m.l - m.r) / beams.length;
+  beams.forEach((b, i) => {
+    const x = m.l + step * (i + 0.5);
+    const lab = el('text', { x, y: H - m.b + 18, 'text-anchor': 'middle', fill: 'var(--text-secondary)', 'font-size': 13 }, svg);
+    lab.textContent = b.label;
+    const r = b.limit;
+    if (!r) {
+      const na = el('text', { x, y: (m.t + H - m.b) / 2, 'text-anchor': 'middle', fill: 'var(--text-muted)', 'font-size': 13 }, svg);
+      na.textContent = 'Not run';
+      return;
+    }
+    el('line', { x1: x, x2: x, y1: sc.Y(r.rmue_lo), y2: sc.Y(r.rmue_hi), stroke: 'var(--s-CE)', 'stroke-width': 2 }, svg);
+    for (const v of [r.rmue_lo, r.rmue_hi])
+      el('line', { x1: x - 6, x2: x + 6, y1: sc.Y(v), y2: sc.Y(v), stroke: 'var(--s-CE)', 'stroke-width': 2 }, svg);
+    el('circle', { cx: x, cy: sc.Y(r.rmue), r: 5, fill: 'var(--s-CE)', stroke: 'var(--surface-1)', 'stroke-width': 2 }, svg);
+    const val = el('text', { x: x + 12, y: sc.Y(r.rmue) + 4, fill: 'var(--text-primary)', 'font-size': 12 }, svg);
+    const e = Math.floor(Math.log10(r.rmue));
+    val.textContent = `${(r.rmue / 10 ** e).toFixed(1)}×${decade(10 ** e)}`;
+    const hit = el('rect', { x: x - step / 2, y: m.t, width: step, height: H - m.t - m.b, fill: 'transparent' }, svg);
+    hit.addEventListener('pointermove', () => {
+      const box = svg.getBoundingClientRect();
+      tip.innerHTML = `<div class="head">${b.label}</div>
+        <div class="row"><span>Median</span><span>${sci(r.rmue)}</span></div>
+        <div class="row"><span>68% band</span><span>${sci(r.rmue_lo, 1)} – ${sci(r.rmue_hi, 1)}</span></div>
+        <div class="row"><span>Signal events</span><span>${r.events.toFixed(2)}</span></div>
+        <div class="row"><span>CE efficiency</span><span>${(100 * r.efficiency).toFixed(1)}%</span></div>`;
+      placeTip(tip, host, x * box.width / W, sc.Y(r.rmue) * box.height / H);
+    });
+    hit.addEventListener('pointerleave', () => { tip.style.display = 'none'; });
+  });
+}
+
+const hasRuntime = DATA.runtime.length >= 2, hasBeams = DATA.beams.some(b => b.limit);
+document.getElementById('projections').hidden = !(hasRuntime || hasBeams);
+document.getElementById('panel-runtime').hidden = !hasRuntime;
+document.getElementById('panel-beams').hidden = !hasBeams;
+if (hasRuntime) {
+  const p0 = DATA.runtime[0];
+  document.getElementById('runtime-note').textContent =
+    `Expected 90% CL upper limit from the shape fit, ${p0.beam_mode} at ${+p0.power.toFixed(2)} kW. ` +
+    'Only the normalization changes between points: the selection is the same.';
+}
+
+function render() {
+  notes(); draw('mom'); draw('time');
+  if (hasRuntime) drawRuntime();
+  if (hasBeams) drawBeams();
+}
 
 for (const b of document.querySelectorAll('[data-scale]')) b.addEventListener('click', () => {
   state.scale = b.dataset.scale;
